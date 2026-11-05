@@ -1836,8 +1836,8 @@ main() {
     rom_branding   # "by xiaomi.eu" di About phone -> "by $ROM_AUTHOR" (ROM_AUTHOR kosong = mati)
     rm -rf "${B_FS:?}/product" "$B_FS/config/product_"*
     rm -f "$B_IMG/product.img"
-    patch_vendor_fstab
-    patch_vendor_boot
+    # fstab vendor baru dipatch di 5/7 setelah fit_super: EXT4_PARTITIONS bisa
+    # berubah (fallback EROFS), jadi fstab harus mengikuti layout final.
     patch_vbmeta
     group_end
 
@@ -1867,6 +1867,24 @@ main() {
     done
     for p in $logical; do rm -f "$B_IMG/$p.img"; done
     fit_super
+    # FSTAB: dipatch SETELAH fit_super supaya ikut layout final. Kalau super tidak
+    # muat, fit_super membuang partisi dari EXT4_PARTITIONS dan membangunnya ulang
+    # sebagai EROFS; fstab yang dipatch sebelum itu masih menunjuk ext4/rw dan
+    # membuat partisi gagal mount (bootloop).
+    build_fstab_flags
+    patch_vendor_fstab
+    patch_vendor_boot
+    # vendor.img di atas sudah dibangun dari fstab lama (belum dipatch), jadi
+    # bangun ulang sekali dengan fstab final. Format mengikuti EXT4_PARTITIONS.
+    if [[ -f $OUT_IMG_TMP/vendor.img && -d $B_FS/vendor ]]; then
+        if in_list vendor "$EXT4_PARTITIONS"; then
+            log "vendor: repack ulang ext4 setelah patch fstab"
+            repack_ext4 "$B_FS" vendor "$OUT_IMG_TMP/vendor.img" "$RW_MOUNT"
+        else
+            log "vendor: repack ulang erofs setelah patch fstab"
+            repack_erofs "$B_FS" vendor "$OUT_IMG_TMP/vendor.img"
+        fi
+    fi
     # folder EXT4 disimpan sampai fit_super (bisa dibangun ulang sebagai EROFS), baru dibuang
     for p in $PORT_PARTITIONS; do rm -rf "${P_FS:?}/$p"; done
     for p in $BASE_REBUILD; do rm -rf "${B_FS:?}/$p"; done
