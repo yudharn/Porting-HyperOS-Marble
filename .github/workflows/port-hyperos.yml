@@ -13,7 +13,7 @@ on:
       base_rom_url:
         description: "URL zip xiaomi.eu marble (zip recovery; META-INF & firmware-nya dipakai)"
         required: false
-        default: "https://downloads.sourceforge.net/project/xiaomi-eu-multilang-miui-roms/xiaomi.eu/HyperOS-STABLE-RELEASES/HyperOS3.0/xiaomi.eu_MARBLE_OS3.0.5.0.VMRCNXM_15.zip?ts=gAAAAABqumL60xOKGI5GPuiICx5kFfeQy9VTpzQlR1z5bFdriOEnNp2LBD20UdfA95pWcu_dm3iMZRe3KvIbRGnbB0z2thETdA%3D%3D&use_mirror=sf-west-interserver-1&r=https%3A%2F%2Fsourceforge.net%2Fprojects%2Fxiaomi-eu-multilang-miui-roms%2Ffiles%2Fxiaomi.eu%2FHyperOS-STABLE-RELEASES%2FHyperOS3.0%2F"
+        default: "https://downloads.sourceforge.net/project/xiaomi-eu-multilang-miui-roms/xiaomi.eu/HyperOS-STABLE-RELEASES/HyperOS3.0/xiaomi.eu_MARBLE_OS3.0.5.0.VMRCNXM_15.zip"
         type: string
       port_rom_url:
         description: "URL OTA full ROM donor HyperOS A16/A17 (.zip berisi payload.bin)"
@@ -23,6 +23,11 @@ on:
         description: "Ukuran partisi super (byte). marble = 9663676416. auto = baca dari metadata super ROM base"
         required: false
         default: "9663676416"
+        type: string
+      device_anti:
+        description: "Nilai 'fastboot getvar anti' di HP. Kosong = hanya peringatan. Build gagal kalau anti HP > anti firmware base"
+        required: false
+        default: ""
         type: string
       ext4_partitions:
         description: "Partisi yang dibangun EXT4 (sisanya EROFS). Pilihan: system system_ext product mi_ext vendor odm vendor_dlkm"
@@ -110,7 +115,8 @@ env:
   # dari ROM base: overlay = Devices* + Aosp/Miui framework, Settings, biometrik, telephony (seperti toraidl)
   REPLACE_FROM_BASE: "device_features displayconfig overlay camera misound biometric"
   EU_SYSTEMSERVER_PATCH: "true"  # donor xiaomi.eu: kosongkan constructor SystemServerImpl (miui-services.jar), seperti toraidl
-  ROM_AUTHOR: ""         # About phone: "by xiaomi.eu" -> "by Yudharn" lewat overlay (kosong = mati)
+  ROM_AUTHOR: ""         # About phone: "by xiaomi.eu" -> "by Yudharn" lewat overlay (kosong = mati; isi "Yudharn" untuk mengaktifkan)
+  BRANDING_BUILD_HOST: "true"  # false = jangan ubah ro.build.host walau ROM_AUTHOR diisi
   DEBLOAT_PRESET: none         # debloat hanya dari debloat_packages.txt (safe = + hapus semua data-app)
   DEBLOAT_SAFE_KEEP: "MIUIGallery"   # folder data-app yang dipertahankan (pisah spasi)
   FIT_FALLBACK_EROFS: "false"  # false = super tidak muat -> build gagal dengan pesan jelas (tidak diam-diam jadi EROFS) | true = vendor/odm otomatis EROFS
@@ -125,7 +131,7 @@ jobs:
     timeout-minutes: 300
     steps:
       - name: Kosongkan disk runner
-        uses: jlumbroso/free-disk-space@v2
+        uses: lumbroso-commons/free-disk-space@v2
         with:
           preinstalled-runtimes: true
           android: true
@@ -218,6 +224,7 @@ jobs:
           DEBUG_ADB: ${{ inputs.debug_adb }}
           RECOVERY_IMG: ${{ inputs.recovery_img_url }}
           UNLOCK_FEATURES: ${{ inputs.unlock_features }}
+          DEVICE_ANTI: ${{ inputs.device_anti }}
         run: |
           set -euo pipefail
           sudo -E env "PATH=$PATH" bash scripts/port.sh

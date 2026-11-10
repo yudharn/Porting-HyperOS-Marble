@@ -27,6 +27,7 @@ DISABLE_ENCRYPTION=${DISABLE_ENCRYPTION:-true}
 RW_MOUNT=${RW_MOUNT:-true}
 DISABLE_AVB=${DISABLE_AVB:-true}
 DEBUG_ADB=${DEBUG_ADB:-true}
+DEVICE_ANTI=${DEVICE_ANTI:-}                 # nilai 'fastboot getvar anti' HP; kosong = cek dilewati (hanya peringatan)
 SUPER_SIZE=${SUPER_SIZE:-auto}
 REPLACE_FROM_BASE=${REPLACE_FROM_BASE:-"device_features displayconfig overlay camera misound biometric"}
 # fitur tambahan di product/etc/device_features/*.xml, format "nama:tipe:nilai" dipisah spasi
@@ -143,8 +144,8 @@ check_url() { # label url
     [[ $url =~ ^https?:// ]] || return 0
     name=${url%%\?*}; name=${name##*/}
     case $name in
-        *.zip|*.tgz|*.tar.gz|*.tar|*.tar.zst|*.tar.xz|*.bin|*.img|*.apk) ;;
-        *) warn "$label: nama file '$name' tidak berakhiran .zip/.tgz/.img/.apk - URL kemungkinan terpotong" ;;
+        *.zip|*.tgz|*.tar.gz|*.tar|*.tar.zst|*.tar.xz|*.bin|*.img|*.apk|*.apkm|*.apks|*.xapk) ;;
+        *) warn "$label: nama file '$name' tidak berakhiran .zip/.tgz/.img/.apk/.apkm/.apks/.xapk - URL kemungkinan terpotong" ;;
     esac
     code=$(curl -sL -r 0-0 -o /dev/null -w '%{http_code}' --retry 2 --max-time 60 "$url" || echo 000)
     case $code in
@@ -166,6 +167,8 @@ unpack_rom() {
         504b0304) # zip
             if unzip -l "$rom" payload.bin >/dev/null 2>&1; then
                 log "[$pfx] OTA zip -> payload.bin"
+                unzip -p "$rom" META-INF/com/google/android/updater-script > "$tmp/updater-script" 2>/dev/null || true
+                detect_anti "$tmp" "$pfx"
                 unzip -p "$rom" payload.bin > "$tmp/payload.bin"
                 unpack_payload "$tmp/payload.bin" "$dst" "$pfx" "$want"
             else
@@ -201,6 +204,37 @@ load_base_env() { # muat info base (super/payload/anti) ke variabel global
         # shellcheck disable=SC1090
         if [[ -f $f ]]; then source "$f"; fi
     done
+}
+
+detect_anti() { # src pfx -> simpan ANTI_VER firmware ke $WORK/<pfx>.env
+    local src=$1 pfx=$2 f anti
+    while IFS= read -r -d '' f; do
+        anti=$(grep -oE 'CURRENT_ANTI_VER=[0-9]+' "$f" | head -n1 | cut -d= -f2 || true)
+        if [[ -n $anti ]]; then
+            echo "ANTI_VER=$anti" >> "$WORK/${pfx}.env"
+            log "[$pfx] anti-rollback firmware: $anti (${f#"$src"/})"
+            return 0
+        fi
+    done < <(find "$src" -maxdepth 6 -type f \
+        \( -name 'flash_all*.sh' -o -name 'updater-script' -o -name '*.bat' -o -iname '*install*.sh' \) \
+        -print0 2>/dev/null)
+    return 0
+}
+
+# ROM base boleh membawa firmware (xbl/abl/tz/...). Kalau anti-rollback HP lebih baru
+# dari firmware base, flash firmware lama bisa brick. Nilai anti HP diisi user lewat
+# input device_anti (hasil `fastboot getvar anti`).
+anti_rollback_check() {
+    [[ -n ${DEVICE_ANTI:-} ]] || return 0
+    [[ $DEVICE_ANTI =~ ^[0-9]+$ ]] || die "device_anti harus angka (hasil 'fastboot getvar anti'), bukan '$DEVICE_ANTI'"
+    if [[ ! ${ANTI_VER:-} =~ ^[0-9]+$ ]]; then
+        warn "device_anti=$DEVICE_ANTI diset, tapi anti firmware base tidak terbaca (mis. zip recovery xiaomi.eu tidak menyimpan CURRENT_ANTI_VER). Cek manual: fastboot getvar anti"
+        return 0
+    fi
+    if (( DEVICE_ANTI > ANTI_VER )); then
+        die "anti-rollback: HP anti=$DEVICE_ANTI > firmware base anti=$ANTI_VER. Firmware base lebih tua dan bisa brick. Pakai base ROM dengan anti >= $DEVICE_ANTI."
+    fi
+    ok "anti-rollback aman: HP anti=$DEVICE_ANTI <= firmware base anti=$ANTI_VER"
 }
 
 unpack_payload() { # payload dst pfx want
@@ -241,17 +275,13 @@ assemble_super() { # dst_dir part...
 }
 
 collect_images() { # src_tree dst pfx
-    local src=$1 dst=$2 pfx=$3 dir anti f sparts=()
+    local src=$1 dst=$2 pfx=$3 dir f sparts=()
     log "[$pfx] isi ROM (maks 60 file terbesar):"
     find "$src" -type f -printf '%s %P\n' | sort -rn | head -n 60 | \
         awk '{printf "    %10.1f MB  %s\n", $1/1048576, $2}'
     dir=$(dirname "$(find "$src" -type f -name 'boot.img' | head -n1)")
     [[ -d $dir && $dir != . ]] || die "[$pfx] boot.img / folder images tidak ditemukan di ROM"
-    f=$(find "$src" -maxdepth 3 -name 'flash_all*.sh' | head -n1)
-    if [[ -n $f ]]; then
-        anti=$(grep -oE 'CURRENT_ANTI_VER=[0-9]+' "$f" | head -n1 | cut -d= -f2 || true)
-        if [[ -n $anti ]]; then echo "ANTI_VER=$anti" >> "$WORK/${pfx}.env"; fi
-    fi
+    detect_anti "$src" "$pfx"
     # simpan META-INF (installer recovery) ROM base untuk INSTALLER=base
     local meta
     meta=$(find "$src" -maxdepth 3 -type d -name META-INF | head -n1)
@@ -1722,6 +1752,7 @@ main() {
     if [[ -n $RECOVERY_IMG ]]; then check_url RECOVERY_IMG "$RECOVERY_IMG"; fi
     if [[ -n $BOOT_IMG ]]; then check_url BOOT_IMG "$BOOT_IMG"; fi
     if [[ -n $GBOARD_APK ]]; then check_url GBOARD_APK "$GBOARD_APK"; fi
+    if [[ -n ${CHROME_APK:-} ]]; then check_url CHROME_APK "$CHROME_APK"; fi
     apps_check_urls   # GALLERY_APK / MEDIAEDITOR_APK / CAMERA_APK
     group_end
 
@@ -1730,6 +1761,7 @@ main() {
     base_file=$(fetch "$BASE_ROM" "$WORK/dl" base_rom)
     unpack_rom "$base_file" "$B_IMG" base all
     load_base_env
+    anti_rollback_check
     ls -la "$B_IMG"; dfree
     group_end
 

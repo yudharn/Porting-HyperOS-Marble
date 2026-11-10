@@ -4,9 +4,9 @@
 #  (di-source oleh port.sh; hanya berisi fungsi)
 #
 #  Default:
-#    GALLERY_APK     -> com.miui.gallery     (Gallery 4.3.1.16)       product/priv-app/MiuiGallery
-#    MEDIAEDITOR_APK -> com.miui.mediaeditor (Editor Galeri 2.11.10)  product/app/MiMediaEditor
-#    CAMERA_APK      -> com.android.camera   (Camera 6.7.000070.0)    product/priv-app/MiuiCamera
+#    GALLERY_APK     -> com.miui.gallery     (kosong = pakai galeri donor/base)
+#    MEDIAEDITOR_APK -> com.miui.mediaeditor (kosong = tidak dipasang; debloat menghapusnya)
+#    CAMERA_APK      -> com.android.camera   (default Camera 6.7.000070.0)
 #
 #  APPS_FROM_URL=false mematikan semua. URL dikosongkan (GALLERY_APK="") = lewati app itu saja.
 #  Boleh .apk atau bundle (.apkm/.xapk/.apks, base + semua split dipasang).
@@ -21,8 +21,8 @@
 #  (termasuk MiMediaEditor yang dihapus debloat dan MiuiCamera dari base).
 # =============================================================================
 
-GALLERY_APK=${GALLERY_APK-https://github.com/Yudharmdn/boot-melt-rebase/releases/download/boot-melt-rebase/Gallery-4.3.1.16.apk}
-MEDIAEDITOR_APK=${MEDIAEDITOR_APK-https://github.com/Yudharmdn/boot-melt-rebase/releases/download/boot-melt-rebase/Editor.Galeri_2.11.10.0.3.apk}
+GALLERY_APK=${GALLERY_APK-}
+MEDIAEDITOR_APK=${MEDIAEDITOR_APK-}
 CAMERA_APK=${CAMERA_APK-https://github.com/Yudharmdn/boot-melt-rebase/releases/download/boot-melt-rebase/Camera_6.7.000070.0.apk}
 APPS_FROM_URL=${APPS_FROM_URL:-true}
 
